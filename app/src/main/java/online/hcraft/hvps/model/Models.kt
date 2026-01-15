@@ -1,10 +1,24 @@
 package online.hcraft.hvps.model
 
+import com.google.gson.JsonElement
 import com.google.gson.annotations.SerializedName
+
+// --- Account Models ---
+data class AccountResponse(
+    val data: AccountData
+)
+
+data class AccountData(
+    val name: String,
+    val email: String,
+    val timezone: String
+)
 
 // --- Server List Models ---
 data class ServerListResponse(
-    val data: List<VpsServer>
+    val data: List<VpsServer>,
+    @SerializedName("current_page") val currentPage: Int,
+    @SerializedName("last_page") val lastPage: Int
 )
 
 data class VpsServer(
@@ -26,29 +40,56 @@ data class StorageInfo(
 )
 
 data class NetworkInfo(
-    val primary: InterfaceInfo
+    val primary: InterfaceInfo?,
+    // secondary can be Object or Array ([]), so we use JsonElement to avoid parsing errors
+    val secondary: JsonElement? 
 )
 
 data class InterfaceInfo(
-    val ipv4: List<IpAddress>?
+    val mac: String?,
+    val ipv4: List<Ipv4Address>?,
+    val ipv6: List<Ipv6Address>?
 )
 
-data class IpAddress(
-    val address: String
+data class Ipv4Address(
+    val address: String,
+    val gateway: String,
+    val netmask: String
+)
+
+data class Ipv6Address(
+    val subnet: String,
+    val gateway: String,
+    val addresses: List<String>
+)
+
+// --- Server Detail & State ---
+data class ServerDetailResponse(
+    val data: VpsServer
 )
 
 data class ServerState(
     val status: String,
     val running: Boolean,
     val cpu: String?,    // CPU Usage (e.g., "0.3 %")
-    val memory: String?, // RAM Usage (if available)
-    val disk: String?    // Disk Usage (if available)
+    val network: StateNetworkInfo?
 )
 
-data class ServerDetailResponse(
-    val data: VpsServer
+data class StateNetworkInfo(
+    val primary: StateInterfaceInfo?
 )
 
+data class StateInterfaceInfo(
+    val traffic: TrafficInfo?
+)
+
+data class TrafficInfo(
+    val rx: Long,
+    val tx: Long,
+    val total: Long
+)
+
+// --- Task/Power Models ---
 data class TaskResponse(
     val data: TaskData
 )
@@ -61,3 +102,13 @@ data class TaskDetails(
     val id: Int,
     val status: String
 )
+
+data class HistoryEvent(
+    val timestamp: Long,
+    val message: String,
+    val type: HistoryEventType
+)
+
+enum class HistoryEventType {
+    INFO, WARNING, SUCCESS, ERROR
+}

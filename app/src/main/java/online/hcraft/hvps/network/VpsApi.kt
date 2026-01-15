@@ -1,6 +1,7 @@
 package online.hcraft.hvps.network
 
 import okhttp3.OkHttpClient
+import online.hcraft.hvps.model.AccountResponse
 import online.hcraft.hvps.model.ServerListResponse
 import online.hcraft.hvps.model.ServerDetailResponse
 import online.hcraft.hvps.model.TaskResponse
@@ -13,15 +14,25 @@ import retrofit2.http.POST
 import retrofit2.http.Path
 import retrofit2.http.Query
 
-interface PterodactylApi {
+interface VpsApi {
+    @GET("account")
+    suspend fun getAccount(): AccountResponse
+
     @GET("server")
-    suspend fun getServers(): ServerListResponse
+    suspend fun getServers(
+        @Query("results") results: Int = 50
+    ): ServerListResponse
 
     @GET("server/{id}")
     suspend fun getServerDetails(
         @Path("id") id: String,
         @Query("state") state: Boolean = true
     ): ServerDetailResponse
+
+    @GET("server/{id}/tasks")
+    suspend fun getServerTasks(
+        @Path("id") id: String
+    ): Response<Any> // We might need a specific TaskListResponse if we were using it extensively
 
     // Power Actions
     @POST("server/{id}/boot")
@@ -53,12 +64,12 @@ object RetrofitClient {
         }
         .build()
 
-    val api: PterodactylApi by lazy {
+    val api: VpsApi by lazy {
         Retrofit.Builder()
             .baseUrl(BASE_URL)
             .client(httpClient)
             .addConverterFactory(GsonConverterFactory.create())
             .build()
-            .create(PterodactylApi::class.java)
+            .create(VpsApi::class.java)
     }
 }
