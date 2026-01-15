@@ -17,14 +17,14 @@ import kotlinx.coroutines.launch
 import online.hcraft.hvps.model.AccountData
 import online.hcraft.hvps.model.HistoryEvent
 import online.hcraft.hvps.model.VpsServer
-import online.hcraft.hvps.network.RetrofitClient
+import online.hcraft.hvps.repository.ServerRepository
 import online.hcraft.hvps.service.MonitoringService
 import online.hcraft.hvps.utils.SettingsManager
 import online.hcraft.hvps.utils.TokenManager
-import retrofit2.HttpException
 
 class MainViewModel(application: Application) : AndroidViewModel(application) {
     private val settingsManager = SettingsManager(application)
+    private val repository = ServerRepository()
 
     var serverList by mutableStateOf<List<VpsServer>>(emptyList())
         private set
@@ -66,7 +66,7 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
     val notificationEvents = _notificationEvents.asSharedFlow()
 
     private var pollingJob: Job? = null
-    // To prevent spamming notifications every 2 seconds
+    // To prevent spamming notifications every few seconds
     private var lastNotificationTime = 0L
 
     init {
@@ -96,13 +96,15 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
         viewModelScope.launch {
             isLoading = true
             error = null
-            try {
-                val accountResponse = RetrofitClient.api.getAccount()
-                userData = accountResponse.data
+            
+            val result = repository.getAccount()
+            
+            result.onSuccess { data ->
+                userData = data
                 isAuthenticated = true
                 fetchServers()
-            } catch (e: Exception) {
-                if (e is HttpException && e.code() == 401) {
+            }.onFailure { e ->
+                if (e.message?.contains("401") == true) {
                     logout()
                     error = "Session expired or invalid key."
                 } else {
@@ -115,10 +117,8 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
                          error = "Login failed: ${e.message}"
                      }
                 }
-                e.printStackTrace()
-            } finally {
-                isLoading = false
             }
+            isLoading = false
         }
     }
 
@@ -136,27 +136,25 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
     fun fetchServers() {
         viewModelScope.launch {
             isLoading = true
-            try {
-                val response = RetrofitClient.api.getServers(results = 50)
-                serverList = response.data
-                // Auto-select first if available
+            val result = repository.getServers()
+            
+            result.onSuccess { data ->
+                serverList = data
+                // Auto-select first if available and none selected
                 if (serverList.isNotEmpty() && selectedServer == null) {
                    selectServer(serverList.first())
                 }
-                // Refresh service state based on potentially new data (though data is persistent)
                 refreshServiceState()
-            } catch (e: Exception) {
+            }.onFailure { e ->
                 error = "Failed to load servers. Check API Key or Connection."
-                e.printStackTrace()
-            } finally {
-                isLoading = false
             }
+            isLoading = false
         }
     }
 
     fun selectServer(server: VpsServer) {
         selectedServer = server
-        serverDetail = null // Clear old details
+        serverDetail = null // Clear old details to show loading state if desired, or keep generic info
         
         loadServerSettings(server.id)
         startPolling(server.id)
@@ -190,6 +188,12 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
         val serverId = selectedServer?.id ?: return
         historyEvents = settingsManager.getHistoryEvents(serverId)
     }
+    
+    fun clearHistory() {
+        val serverId = selectedServer?.id ?: return
+        settingsManager.clearHistory(serverId)
+        historyEvents = emptyList()
+    }
 
     private fun refreshServiceState() {
         val monitoredIds = settingsManager.getMonitoredServerIds()
@@ -219,26 +223,19 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
         pollingJob?.cancel()
         pollingJob = viewModelScope.launch {
             while (isActive) {
-                try {
-                    // Fetch details with state=true
-                    val response = RetrofitClient.api.getServerDetails(serverId, state = true)
-                    // Update detail
-                    serverDetail = response.data
-
-                    // Check Notification Logic (In-App only for immediate feedback)
-                    checkCpuThreshold(response.data)
-                    
-                    // Also refresh history periodically in case background service added something
+                val result = repository.getServerDetails(serverId)
+                
+                result.onSuccess { data ->
+                    serverDetail = data
+                    checkCpuThreshold(data)
                     historyEvents = settingsManager.getHistoryEvents(serverId)
-                } catch (e: Exception) {
-                    if (e is HttpException && e.code() == 429) {
-                        println("Rate limit hit, backing off...")
-                        delay(5000) // Wait longer if rate limited
-                    } else {
-                        println("Polling error: ${e.message}")
+                }.onFailure { e ->
+                    if (e.message?.contains("429") == true) {
+                        delay(5000) // Rate limit backoff
                     }
                 }
-                delay(2000) // 2s polling interval to be safe
+                
+                delay(5000) // Optimization: Increased from 2s to 5s to reduce load/battery usage
             }
         }
     }
@@ -264,27 +261,14 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
     fun sendPowerSignal(action: String) {
         val id = selectedServer?.id ?: return
         viewModelScope.launch {
-            try {
-                val response = when(action) {
-                    "start" -> RetrofitClient.api.bootServer(id)
-                    "restart" -> RetrofitClient.api.restartServer(id)
-                    "stop" -> RetrofitClient.api.shutdownServer(id)
-                    "kill" -> RetrofitClient.api.powerOffServer(id) // Brutal kill
-                    else -> null
-                }
-                
-                if (response == null) return@launch
-
-                if (!response.isSuccessful) {
-                    error = "Power action failed: ${response.code()}"
-                } else {
-                    // Force immediate refresh
-                    val details = RetrofitClient.api.getServerDetails(id, state = true)
-                    serverDetail = details.data
-                    // History update will happen on next poll or via service
-                }
-            } catch (e: Exception) {
-                error = "Power action error: ${e.message}"
+            val result = repository.powerAction(id, action)
+            
+            result.onSuccess {
+                 // Force immediate refresh
+                 val details = repository.getServerDetails(id)
+                 details.onSuccess { serverDetail = it }
+            }.onFailure { e ->
+                error = "Power action failed: ${e.message}"
             }
         }
     }

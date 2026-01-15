@@ -76,11 +76,15 @@ class SettingsManager(context: Context) {
     fun addHistoryEvent(serverId: String, event: HistoryEvent) {
         val currentList = getHistoryEvents(serverId).toMutableList()
         currentList.add(0, event) // Add to top
-        // Limit history to 50 items
-        if (currentList.size > 50) {
-            currentList.removeAt(currentList.lastIndex)
-        }
-        val json = gson.toJson(currentList)
+        
+        // Retention Policy: Max 50 items AND Max 30 days old
+        val thirtyDaysAgo = System.currentTimeMillis() - (30L * 24 * 60 * 60 * 1000)
+        
+        val filteredList = currentList
+            .filter { it.timestamp > thirtyDaysAgo }
+            .take(50)
+            
+        val json = gson.toJson(filteredList)
         prefs.edit().putString("history_$serverId", json).apply()
     }
 
@@ -88,9 +92,16 @@ class SettingsManager(context: Context) {
         val json = prefs.getString("history_$serverId", null) ?: return emptyList()
         val type = object : TypeToken<List<HistoryEvent>>() {}.type
         return try {
-            gson.fromJson(json, type)
+            val list: List<HistoryEvent> = gson.fromJson(json, type)
+            // Filter on read as well to ensure UI doesn't show stale data if no new events occurred
+            val thirtyDaysAgo = System.currentTimeMillis() - (30L * 24 * 60 * 60 * 1000)
+            list.filter { it.timestamp > thirtyDaysAgo }
         } catch (e: Exception) {
             emptyList()
         }
+    }
+
+    fun clearHistory(serverId: String) {
+        prefs.edit().remove("history_$serverId").apply()
     }
 }

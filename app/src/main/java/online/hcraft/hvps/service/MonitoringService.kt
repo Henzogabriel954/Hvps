@@ -76,21 +76,24 @@ class MonitoringService : Service() {
                         }
 
                         // 2. Check Status Change (Online/Offline)
-                        val currentStatus = server.state?.status ?: "unknown"
-                        val lastStatus = settingsManager.getLastStatus(id)
+                        val rawStatus = server.state?.status ?: "unknown"
+                        val currentStatus = rawStatus.lowercase()
+                        val lastStatus = settingsManager.getLastStatus(id)?.lowercase()
+                        
+                        // Define what we consider "Offline" and "Online"
+                        val isOffline = currentStatus in listOf("offline", "stopped", "suspended", "error")
+                        val isOnline = currentStatus == "running"
                         
                         if (lastStatus != null && lastStatus != currentStatus) {
                             // Status changed
-                            if (currentStatus == "offline" && settingsManager.getNotifyOffline(id)) {
-                                sendAlert(id, server.name, "Server Offline", "${server.name} has gone offline.", false, HistoryEventType.ERROR)
-                            } else if (currentStatus == "running" && settingsManager.getNotifyOnline(id)) {
+                            if (isOffline && settingsManager.getNotifyOffline(id)) {
+                                sendAlert(id, server.name, "Server Offline", "${server.name} is now $rawStatus.", false, HistoryEventType.ERROR)
+                            } else if (isOnline && settingsManager.getNotifyOnline(id)) {
                                 sendAlert(id, server.name, "Server Online", "${server.name} is now online.", false, HistoryEventType.SUCCESS)
                             } else {
-                                // Just log the change to history if notification is disabled? 
-                                // Or maybe user only wants history if notification is enabled?
-                                // Let's log significant state changes regardless for history if they are "monitored"
-                                val type = if(currentStatus == "running") HistoryEventType.SUCCESS else if(currentStatus == "offline") HistoryEventType.ERROR else HistoryEventType.INFO
-                                settingsManager.addHistoryEvent(id, HistoryEvent(System.currentTimeMillis(), "Status changed to $currentStatus", type))
+                                // Log other state changes
+                                val type = if(isOnline) HistoryEventType.SUCCESS else if(isOffline) HistoryEventType.ERROR else HistoryEventType.INFO
+                                settingsManager.addHistoryEvent(id, HistoryEvent(System.currentTimeMillis(), "Status changed to $rawStatus", type))
                             }
                         }
                         
