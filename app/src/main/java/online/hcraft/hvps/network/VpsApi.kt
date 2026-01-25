@@ -4,6 +4,7 @@ import okhttp3.OkHttpClient
 import online.hcraft.hvps.model.AccountResponse
 import online.hcraft.hvps.model.ServerListResponse
 import online.hcraft.hvps.model.ServerDetailResponse
+import online.hcraft.hvps.model.TaskListResponse
 import online.hcraft.hvps.model.TaskResponse
 import online.hcraft.hvps.utils.TokenManager
 import retrofit2.Response
@@ -32,7 +33,7 @@ interface VpsApi {
     @GET("server/{id}/tasks")
     suspend fun getServerTasks(
         @Path("id") id: String
-    ): Response<Any> // We might need a specific TaskListResponse if we were using it extensively
+    ): TaskListResponse
 
     // Power Actions
     @POST("server/{id}/boot")

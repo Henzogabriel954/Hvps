@@ -1,5 +1,6 @@
 package online.hcraft.hvps.ui.components
 
+import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -57,6 +58,10 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import online.hcraft.hvps.model.VpsServer
 
+import androidx.compose.runtime.LaunchedEffect
+import kotlinx.coroutines.delay
+import kotlinx.coroutines.isActive
+
 @Composable
 fun ServerDetailContent(
     server: VpsServer,
@@ -64,13 +69,45 @@ fun ServerDetailContent(
     onPowerAction: (String) -> Unit,
     onCopyIp: (String) -> Unit
 ) {
+    var pendingAction by remember { mutableStateOf<String?>(null) }
+
+    if (pendingAction != null) {
+        val action = pendingAction!!
+        val isDestructive = action == "stop" || action == "kill"
+        val title = when (action) {
+            "start" -> "Start Server"
+            "restart" -> "Restart Server"
+            "stop" -> "Stop Server"
+            "kill" -> "Kill Server"
+            else -> "Power Action"
+        }
+        val text = when (action) {
+            "kill" -> "Are you sure you want to forcibly kill the server? This may cause data loss."
+            "stop" -> "Are you sure you want to stop the server?"
+            "restart" -> "Are you sure you want to restart the server?"
+            "start" -> "Are you sure you want to start the server?"
+            else -> "Are you sure you want to perform this action?"
+        }
+
+        ConfirmationDialog(
+            title = title,
+            text = text,
+            onDismiss = { pendingAction = null },
+            onConfirm = {
+                onPowerAction(action)
+                pendingAction = null
+            },
+            isDestructive = isDestructive
+        )
+    }
+
     LazyColumn(
         contentPadding = contentPadding,
         modifier = Modifier.fillMaxSize(),
         verticalArrangement = Arrangement.spacedBy(16.dp)
     ) {
         item {
-            PowerControlSection(onPowerAction)
+            PowerControlSection { action -> pendingAction = action }
         }
 
         item {
@@ -185,6 +222,18 @@ fun ResourceStatsGrid(server: VpsServer) {
         val cpuDisplay = server.state?.cpu ?: "0%"
         val cpuValue = cpuDisplay.replace("%", "").trim().toFloatOrNull() ?: 0f
         
+        // Uptime (if available via Agent)
+        val uptime = server.state?.uptime
+        if (uptime != null) {
+            ResourceItem(
+                icon = Icons.Default.PlayArrow,
+                label = "Uptime",
+                value = uptime,
+                progress = null,
+                color = MaterialTheme.colorScheme.primary
+            )
+        }
+
         ResourceItem(
             icon = Icons.Default.Memory,
             label = "CPU Load",
@@ -193,22 +242,50 @@ fun ResourceStatsGrid(server: VpsServer) {
             color = MaterialTheme.colorScheme.primary
         )
         
-        ResourceItem(
-            icon = Icons.Default.SdStorage,
-            label = "Memory (Allocated)",
-            value = server.memory,
-            progress = null, 
-            color = MaterialTheme.colorScheme.secondary
-        )
+        // Memory
+        val memUsage = server.state?.memory
+        val memPercent = server.state?.memoryPercent
         
-        val primaryStorage = server.storage.find { it.primary }?.capacity ?: "N/A"
-        ResourceItem(
-            icon = Icons.Default.Dns,
-            label = "Disk Space (Allocated)",
-            value = primaryStorage,
-            progress = null,
-            color = MaterialTheme.colorScheme.tertiary
-        )
+        if (memUsage != null && memPercent != null) {
+            ResourceItem(
+                icon = Icons.Default.SdStorage,
+                label = "Memory (Usage)",
+                value = memUsage,
+                progress = memPercent, 
+                color = MaterialTheme.colorScheme.secondary
+            )
+        } else {
+            ResourceItem(
+                icon = Icons.Default.SdStorage,
+                label = "Memory (Allocated)",
+                value = server.memory,
+                progress = null, 
+                color = MaterialTheme.colorScheme.secondary
+            )
+        }
+        
+        // Disk
+        val diskUsage = server.state?.disk
+        val diskPercent = server.state?.diskPercent
+        
+        if (diskUsage != null && diskPercent != null) {
+             ResourceItem(
+                icon = Icons.Default.Dns,
+                label = "Disk Space (Usage)",
+                value = diskUsage,
+                progress = diskPercent,
+                color = MaterialTheme.colorScheme.tertiary
+            )
+        } else {
+            val primaryStorage = server.storage.find { it.primary }?.capacity ?: "N/A"
+            ResourceItem(
+                icon = Icons.Default.Dns,
+                label = "Disk Space (Allocated)",
+                value = primaryStorage,
+                progress = null,
+                color = MaterialTheme.colorScheme.tertiary
+            )
+        }
 
         val rx = server.state?.network?.primary?.traffic?.rx ?: 0L
         val tx = server.state?.network?.primary?.traffic?.tx ?: 0L
@@ -278,6 +355,11 @@ fun ResourceItem(
     progress: Float?,
     color: Color
 ) {
+    val animatedProgress by animateFloatAsState(
+        targetValue = progress ?: 0f,
+        label = "ProgressAnimation"
+    )
+
     ElevatedCard(
         modifier = Modifier.fillMaxWidth(),
         shape = RoundedCornerShape(24.dp),
@@ -309,7 +391,7 @@ fun ResourceItem(
                 if (progress != null) {
                     Spacer(modifier = Modifier.height(8.dp))
                     LinearProgressIndicator(
-                        progress = { progress },
+                        progress = { animatedProgress },
                         modifier = Modifier
                             .fillMaxWidth()
                             .height(6.dp)

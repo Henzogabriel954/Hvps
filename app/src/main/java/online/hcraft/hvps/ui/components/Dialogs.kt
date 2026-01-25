@@ -14,6 +14,7 @@ import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.CheckCircle
@@ -24,6 +25,7 @@ import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Slider
 import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
@@ -36,6 +38,8 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.input.ImeAction
+import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.unit.dp
 import online.hcraft.hvps.model.HistoryEvent
 import online.hcraft.hvps.model.HistoryEventType
@@ -50,13 +54,25 @@ fun SettingsDialog(
     currentThreshold: Int,
     currentNotifyOffline: Boolean,
     currentNotifyOnline: Boolean,
+    agentEnabled: Boolean,
+    agentIp: String,
+    agentPort: String,
+    agentToken: String,
     onDismiss: () -> Unit,
-    onConfirm: (Boolean, Int, Boolean, Boolean) -> Unit
+    onConfirm: (Boolean, Int, Boolean, Boolean) -> Unit,
+    onSaveAgent: (Boolean, String, String, String) -> Unit,
+    onShowAgentInfo: () -> Unit
 ) {
     var enabled by remember { mutableStateOf(currentEnabled) }
     var threshold by remember { mutableStateOf(currentThreshold.toFloat()) }
     var notifyOffline by remember { mutableStateOf(currentNotifyOffline) }
     var notifyOnline by remember { mutableStateOf(currentNotifyOnline) }
+
+    // Agent State
+    var useAgent by remember { mutableStateOf(agentEnabled) }
+    var ip by remember { mutableStateOf(agentIp) }
+    var port by remember { mutableStateOf(agentPort) }
+    var token by remember { mutableStateOf(agentToken) }
 
     AlertDialog(
         onDismissRequest = onDismiss,
@@ -124,16 +140,111 @@ fun SettingsDialog(
                         onCheckedChange = { notifyOnline = it }
                     )
                 }
+
+                HorizontalDivider(modifier = Modifier.padding(vertical = 8.dp))
+
+                Text(
+                    "Advanced Monitoring",
+                    style = MaterialTheme.typography.titleSmall,
+                    color = MaterialTheme.colorScheme.primary
+                )
+                Spacer(modifier = Modifier.height(8.dp))
+                
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Text("Use Proprietary Agent")
+                    Switch(
+                        checked = useAgent,
+                        onCheckedChange = { useAgent = it }
+                    )
+                }
+
+                TextButton(
+                    onClick = onShowAgentInfo,
+                    modifier = Modifier.padding(top = 4.dp)
+                ) {
+                    Text(
+                        "How to connect? (Proprietary Agent)",
+                        style = MaterialTheme.typography.labelLarge,
+                        color = MaterialTheme.colorScheme.primary,
+                        fontWeight = FontWeight.Bold
+                    )
+                }
+
+                AnimatedVisibility(visible = useAgent) {
+                    Column(modifier = Modifier.padding(top = 8.dp)) {
+                        OutlinedTextField(
+                            value = ip,
+                            onValueChange = { ip = it },
+                            label = { Text("Agent IP") },
+                            modifier = Modifier.fillMaxWidth(),
+                            singleLine = true,
+                            keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Uri, imeAction = ImeAction.Next)
+                        )
+                        Spacer(modifier = Modifier.height(8.dp))
+                        OutlinedTextField(
+                            value = port,
+                            onValueChange = { port = it },
+                            label = { Text("Agent Port") },
+                            modifier = Modifier.fillMaxWidth(),
+                            singleLine = true,
+                            keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number, imeAction = ImeAction.Next)
+                        )
+                        Spacer(modifier = Modifier.height(8.dp))
+                        OutlinedTextField(
+                            value = token,
+                            onValueChange = { token = it },
+                            label = { Text("Agent Token") },
+                            modifier = Modifier.fillMaxWidth(),
+                            singleLine = true,
+                            keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Password, imeAction = ImeAction.Done)
+                        )
+                    }
+                }
             }
         },
         confirmButton = {
-            TextButton(onClick = { onConfirm(enabled, threshold.roundToInt(), notifyOffline, notifyOnline) }) {
+            TextButton(onClick = { 
+                onSaveAgent(useAgent, ip, port, token)
+                onConfirm(enabled, threshold.roundToInt(), notifyOffline, notifyOnline)
+            }) {
                 Text("Save")
             }
         },
         dismissButton = {
             TextButton(onClick = onDismiss) {
                 Text("Cancel")
+            }
+        }
+    )
+}
+
+@Composable
+fun AgentInfoDialog(
+    onDismiss: () -> Unit,
+    onInstall: () -> Unit
+) {
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        title = { Text("Proprietary Agent") },
+        text = {
+            Column {
+                Text("The proprietary agent allows real-time monitoring of CPU, Memory, Disk, and Uptime of your VPS.")
+                Spacer(modifier = Modifier.height(16.dp))
+                Text("It is lightweight, secure, and easy to install. Just follow the instructions in our official repository.")
+            }
+        },
+        confirmButton = {
+            androidx.compose.material3.Button(onClick = onInstall) {
+                Text("Install / View Instructions")
+            }
+        },
+        dismissButton = {
+            TextButton(onClick = onDismiss) {
+                Text("Close")
             }
         }
     )
@@ -211,4 +322,45 @@ fun HistoryItem(event: HistoryEvent) {
             Text(dateStr, style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
         }
     }
+}
+
+@Composable
+fun ConfirmationDialog(
+    title: String,
+    text: String,
+    onDismiss: () -> Unit,
+    onConfirm: () -> Unit,
+    isDestructive: Boolean = false
+) {
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        title = { Text(title) },
+        text = { Text(text) },
+        confirmButton = {
+            TextButton(
+                onClick = onConfirm,
+                colors = if (isDestructive) {
+                    androidx.compose.material3.ButtonDefaults.textButtonColors(
+                        contentColor = MaterialTheme.colorScheme.error
+                    )
+                } else {
+                    androidx.compose.material3.ButtonDefaults.textButtonColors()
+                }
+            ) {
+                Text(if (isDestructive) "Confirm" else "Yes")
+            }
+        },
+        dismissButton = {
+            TextButton(onClick = onDismiss) {
+                Text("Cancel")
+            }
+        },
+        icon = {
+            if (isDestructive) {
+                Icon(Icons.Default.Warning, null, tint = MaterialTheme.colorScheme.error)
+            } else {
+                Icon(Icons.Default.Info, null)
+            }
+        }
+    )
 }

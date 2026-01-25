@@ -72,7 +72,12 @@ data class ServerState(
     val status: String,
     val running: Boolean,
     val cpu: String?,    // CPU Usage (e.g., "0.3 %")
-    val network: StateNetworkInfo?
+    val network: StateNetworkInfo?,
+    val memory: String? = null,
+    val disk: String? = null,
+    val memoryPercent: Float? = null,
+    val diskPercent: Float? = null,
+    val uptime: String? = null
 )
 
 data class StateNetworkInfo(
@@ -101,6 +106,22 @@ data class TaskData(
 data class TaskDetails(
     val id: Int,
     val status: String
+)
+
+data class TaskListResponse(
+    val data: List<ServerTask>,
+    @SerializedName("current_page") val currentPage: Int,
+    @SerializedName("last_page") val lastPage: Int
+)
+
+data class ServerTask(
+    val action: String,
+    val started: String,
+    val updated: String,
+    val finished: String,
+    val completed: Boolean,
+    val status: String,
+    val success: Boolean
 )
 
 data class HistoryEvent(

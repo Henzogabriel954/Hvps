@@ -22,6 +22,13 @@ Welcome! This is an open-source Android application designed to make life easier
 -   **Power Control:** Full control at your fingertips: Boot, Restart, Shutdown, and Kill.
 -   **Resource Overview:** View your allocated RAM, CPU Cores, and Disk Space.
 
+### 🚀 Proprietary Agent (New!)
+Get deeper insights into your VPS with our optional lightweight monitoring agent.
+-   **Real Usage Stats:** View actual **Memory** and **Disk** usage percentages, not just the allocated amount.
+-   **Uptime Tracking:** See exactly how long your server has been running (e.g., "5d 12h 30m").
+-   **Faster Updates:** Enjoy faster refresh rates (every 15s) when connected via the agent.
+-   **Easy Setup:** Click "How to connect?" in the app settings to view the [installation guide](https://github.com/Henzogabriel954/Hvps-api-proprietaria).
+
 ### 🔔 Smart Notifications (Background Service)
 -   **High CPU Alerts:** Set a custom threshold (e.g., 85%) and get notified if your server's CPU spikes.
 -   **Status Monitoring:** Receive immediate alerts if your server goes **Offline** or comes back **Online**.

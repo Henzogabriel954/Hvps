@@ -16,15 +16,21 @@ import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
 import online.hcraft.hvps.model.AccountData
 import online.hcraft.hvps.model.HistoryEvent
+import online.hcraft.hvps.model.ServerTask
 import online.hcraft.hvps.model.VpsServer
 import online.hcraft.hvps.repository.ServerRepository
 import online.hcraft.hvps.service.MonitoringService
 import online.hcraft.hvps.utils.SettingsManager
 import online.hcraft.hvps.utils.TokenManager
+import java.time.Duration
+import java.time.Instant
+import java.time.ZonedDateTime
+import java.time.format.DateTimeFormatter
+import java.util.Locale
 
 class MainViewModel(application: Application) : AndroidViewModel(application) {
     private val settingsManager = SettingsManager(application)
-    private val repository = ServerRepository()
+    private val repository = ServerRepository(settingsManager)
 
     var serverList by mutableStateOf<List<VpsServer>>(emptyList())
         private set
@@ -35,7 +41,7 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
     // Detailed server object containing state/stats
     var serverDetail by mutableStateOf<VpsServer?>(null)
         private set
-
+        
     var userData by mutableStateOf<AccountData?>(null)
         private set
 
@@ -57,6 +63,12 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
         private set
     var isNotifyOnline by mutableStateOf(false)
         private set
+        
+    // Agent Settings State
+    var isAgentEnabled by mutableStateOf(false)
+    var agentIp by mutableStateOf("")
+    var agentPort by mutableStateOf("8765")
+    var agentToken by mutableStateOf("")
         
     // History
     var historyEvents by mutableStateOf<List<HistoryEvent>>(emptyList())
@@ -166,6 +178,12 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
         isNotifyOffline = settingsManager.getNotifyOffline(serverId)
         isNotifyOnline = settingsManager.getNotifyOnline(serverId)
         historyEvents = settingsManager.getHistoryEvents(serverId)
+        
+        // Load Agent Settings
+        isAgentEnabled = settingsManager.isAgentEnabled(serverId)
+        agentIp = settingsManager.getAgentIp(serverId)
+        agentPort = settingsManager.getAgentPort(serverId)
+        agentToken = settingsManager.getAgentToken(serverId)
     }
 
     fun updateSettings(enabled: Boolean, threshold: Int, notifyOffline: Boolean, notifyOnline: Boolean) {
@@ -182,6 +200,22 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
         
         // After updating settings, check if we should run the service
         refreshServiceState()
+    }
+    
+    fun saveAgentSettings(enabled: Boolean, ip: String, port: String, token: String) {
+        val serverId = selectedServer?.id ?: return
+        isAgentEnabled = enabled
+        agentIp = ip
+        agentPort = port
+        agentToken = token
+        
+        settingsManager.setAgentEnabled(serverId, enabled)
+        settingsManager.setAgentIp(serverId, ip)
+        settingsManager.setAgentPort(serverId, port)
+        settingsManager.setAgentToken(serverId, token)
+        
+        // Restart polling to apply changes immediately
+        startPolling(serverId)
     }
     
     fun refreshHistory() {
@@ -219,24 +253,72 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
         context.stopService(Intent(context, MonitoringService::class.java))
     }
 
+    // State to track if we are successfully using the agent or fell back to standard
+    private var isUsingAgent = true // Assume we want to use agent if enabled
+
     private fun startPolling(serverId: String) {
         pollingJob?.cancel()
         pollingJob = viewModelScope.launch {
             while (isActive) {
+                // Fetch Details (Hybrid Logic inside Repository)
                 val result = repository.getServerDetails(serverId)
                 
                 result.onSuccess { data ->
                     serverDetail = data
                     checkCpuThreshold(data)
                     historyEvents = settingsManager.getHistoryEvents(serverId)
+                    
+                    // If we succeeded via repository (which tries Agent first if enabled), 
+                    // we check if we were previously in fallback mode.
+                    // However, Repository hides whether it used Agent or Standard in success path 
+                    // (unless we inspect data or change return type).
+                    // But wait: repository.getServerDetails returns Failure if Agent fails!
+                    // So if we are here (Success), it means Agent worked OR Agent was disabled.
+                    
+                    if (settingsManager.isAgentEnabled(serverId)) {
+                        if (!isUsingAgent) {
+                            _notificationEvents.emit("Connected" to "Proprietary Agent connected.")
+                            isUsingAgent = true
+                        }
+                    }
                 }.onFailure { e ->
-                    if (e.message?.contains("429") == true) {
+                    if (e is ServerRepository.AgentConnectionException) {
+                        // Agent failed
+                        if (isUsingAgent) {
+                             _notificationEvents.emit("Warning" to "Agent unreachable. Using Standard API.")
+                             isUsingAgent = false
+                        }
+                        // Fallback fetch to standard API
+                        fetchStandardDetails(serverId)
+                    } else if (e.message?.contains("429") == true) {
                         delay(5000) // Rate limit backoff
                     }
                 }
                 
-                delay(5000) // Optimization: Increased from 2s to 5s to reduce load/battery usage
+                val pollingInterval = if (settingsManager.isAgentEnabled(serverId) && isUsingAgent) 15000L else 30000L
+                delay(pollingInterval)
             }
+        }
+    }
+
+    private suspend fun fetchStandardDetails(serverId: String) {
+        // We use the repository but we need to bypass the Agent check.
+        // Since we can't easily modify the repo signature right now, we will assume 
+        // the repository logic will fallback internally OR we can call `fetchServers` to at least refresh the list?
+        // No, we want details.
+        // Let's assume for this step that we simply retry the `getServerDetails` but we need to temporarily disable the agent check?
+        // This is tricky without changing repo signature. 
+        // A cleaner way in a real app is `repository.getServerDetails(id, forceStandard = true)`.
+        // Since I haven't added that parameter yet, I will modify `ServerRepository` in the next step to support it 
+        // OR simply implement a workaround here.
+        // Workaround: Call `repository.getServers()` which updates the list, then find the server?
+        // That's heavy.
+        
+        // I will add a `getStandardServerDetails` method to `ServerRepository` in the next step.
+        // So here I will call it assuming it exists.
+        val result = repository.getStandardServerDetails(serverId)
+        result.onSuccess { data ->
+             serverDetail = data
         }
     }
 

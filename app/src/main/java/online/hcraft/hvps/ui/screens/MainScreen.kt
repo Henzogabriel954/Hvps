@@ -69,6 +69,8 @@ import online.hcraft.hvps.ui.components.HistoryDialog
 import online.hcraft.hvps.ui.components.ServerDetailContent
 import online.hcraft.hvps.ui.components.SettingsDialog
 import online.hcraft.hvps.viewmodel.MainViewModel
+import androidx.compose.ui.platform.LocalUriHandler
+import online.hcraft.hvps.ui.components.AgentInfoDialog
 
 @Composable
 fun MainScreen(
@@ -124,6 +126,10 @@ fun MainScreen(
                 cpuThreshold = viewModel.cpuThreshold,
                 notifyOffline = viewModel.isNotifyOffline,
                 notifyOnline = viewModel.isNotifyOnline,
+                agentEnabled = viewModel.isAgentEnabled,
+                agentIp = viewModel.agentIp,
+                agentPort = viewModel.agentPort,
+                agentToken = viewModel.agentToken,
                 historyEvents = historyEvents,
                 onSelectServer = { viewModel.selectServer(it) },
                 onLogout = { viewModel.logout() },
@@ -131,6 +137,9 @@ fun MainScreen(
                 onUpdateSettings = { enabled, threshold, nOffline, nOnline -> 
                     if (enabled || nOffline || nOnline) requestPermission()
                     viewModel.updateSettings(enabled, threshold, nOffline, nOnline) 
+                },
+                onSaveAgent = { enabled, ip, port, token ->
+                    viewModel.saveAgentSettings(enabled, ip, port, token)
                 },
                 onClearHistory = { viewModel.clearHistory() }
             )
@@ -161,11 +170,16 @@ fun MainDrawerNav(
     cpuThreshold: Int,
     notifyOffline: Boolean,
     notifyOnline: Boolean,
+    agentEnabled: Boolean,
+    agentIp: String,
+    agentPort: String,
+    agentToken: String,
     historyEvents: List<HistoryEvent>,
     onSelectServer: (VpsServer) -> Unit,
     onLogout: () -> Unit,
     onPowerAction: (String) -> Unit,
     onUpdateSettings: (Boolean, Int, Boolean, Boolean) -> Unit,
+    onSaveAgent: (Boolean, String, String, String) -> Unit,
     onClearHistory: () -> Unit
 ) {
     val drawerState = rememberDrawerState(DrawerValue.Closed)
@@ -174,6 +188,9 @@ fun MainDrawerNav(
     val scrollBehavior = TopAppBarDefaults.exitUntilCollapsedScrollBehavior(rememberTopAppBarState())
     var showSettingsDialog by remember { mutableStateOf(false) }
     var showHistoryDialog by remember { mutableStateOf(false) }
+    var showAgentInfoDialog by remember { mutableStateOf(false) }
+
+    val uriHandler = LocalUriHandler.current
 
     if (showSettingsDialog) {
         SettingsDialog(
@@ -181,6 +198,10 @@ fun MainDrawerNav(
             currentThreshold = cpuThreshold,
             currentNotifyOffline = notifyOffline,
             currentNotifyOnline = notifyOnline,
+            agentEnabled = agentEnabled,
+            agentIp = agentIp,
+            agentPort = agentPort,
+            agentToken = agentToken,
             onDismiss = { showSettingsDialog = false },
             onConfirm = { enabled, threshold, nOffline, nOnline ->
                 onUpdateSettings(enabled, threshold, nOffline, nOnline)
@@ -188,6 +209,22 @@ fun MainDrawerNav(
                 scope.launch {
                     snackbarHostState.showSnackbar("Settings saved for ${selectedServer.name}")
                 }
+            },
+            onSaveAgent = { enabled, ip, port, token ->
+                onSaveAgent(enabled, ip, port, token)
+            },
+            onShowAgentInfo = {
+                showSettingsDialog = false
+                showAgentInfoDialog = true
+            }
+        )
+    }
+
+    if (showAgentInfoDialog) {
+        AgentInfoDialog(
+            onDismiss = { showAgentInfoDialog = false },
+            onInstall = {
+                uriHandler.openUri("https://github.com/Henzogabriel954/Hvps-api-proprietaria")
             }
         )
     }

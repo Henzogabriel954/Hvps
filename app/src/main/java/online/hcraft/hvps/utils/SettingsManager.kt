@@ -63,6 +63,40 @@ class SettingsManager(context: Context) {
         prefs.edit().putInt("cpu_threshold_$serverId", threshold).apply()
     }
 
+    // --- Agent Settings ---
+
+    fun isAgentEnabled(serverId: String): Boolean {
+        return prefs.getBoolean("agent_enabled_$serverId", false)
+    }
+
+    fun setAgentEnabled(serverId: String, enabled: Boolean) {
+        prefs.edit().putBoolean("agent_enabled_$serverId", enabled).apply()
+    }
+
+    fun getAgentIp(serverId: String): String {
+        return prefs.getString("agent_ip_$serverId", "") ?: ""
+    }
+
+    fun setAgentIp(serverId: String, ip: String) {
+        prefs.edit().putString("agent_ip_$serverId", ip).apply()
+    }
+
+    fun getAgentPort(serverId: String): String {
+        return prefs.getString("agent_port_$serverId", "8765") ?: "8765"
+    }
+
+    fun setAgentPort(serverId: String, port: String) {
+        prefs.edit().putString("agent_port_$serverId", port).apply()
+    }
+
+    fun getAgentToken(serverId: String): String {
+        return prefs.getString("agent_token_$serverId", "") ?: ""
+    }
+
+    fun setAgentToken(serverId: String, token: String) {
+        prefs.edit().putString("agent_token_$serverId", token).apply()
+    }
+
     // --- History & State Tracking ---
 
     fun getLastStatus(serverId: String): String? {
